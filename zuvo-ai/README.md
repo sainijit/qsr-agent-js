@@ -74,6 +74,10 @@ Host ports:
 
 Postgres, Redis and Kafka are internal only.
 
+## Deploy to AWS
+
+Step-by-step guide (machine choice, costs, build, deploy, go-live): [docs/aws-deployment-guide.md](docs/aws-deployment-guide.md).
+
 ## Test
 
 ```bash

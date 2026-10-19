@@ -1,5 +1,7 @@
 # AWS deployment: single VM (Phase 10)
 
+> New here? Start with the step-by-step guide: [`docs/aws-deployment-guide.md`](../../docs/aws-deployment-guide.md).
+
 This prepares a low-cost, single-VM deployment of the existing Docker Compose stack.
 **Nothing here has been created in AWS.** Every command below is for the operator to run after approving the cost.
 There is no managed database, cache, broker, orchestrator or load balancer (they would need a separate architecture decision).
