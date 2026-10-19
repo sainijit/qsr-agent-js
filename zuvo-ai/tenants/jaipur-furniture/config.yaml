@@ -1,0 +1,56 @@
+# Tenant bundle: Jaipur Furniture (furniture showroom). Simulator lines only until a real number is added.
+tenant:
+  id: 9e8d7c60-3b4a-4c5d-8e6f-7a8b9c0d1e04
+  slug: jaipur-furniture
+  name: Jaipur Furniture House
+  city: Jaipur
+  industry: furniture_retail
+  timezone: Asia/Kolkata
+  currency: INR
+  languages: [hinglish, hindi, english]
+  plan: pilot
+  monthly_ai_budget_inr: 500
+
+numbers:
+  - { meta_phone_number_id: "PNID_JF_01", display: "+919829200001", label: Showroom, purpose: sales, default_worker: pooja-sales }
+  - { meta_phone_number_id: "PNID_JF_02", display: "+919829200002", label: Custom orders, purpose: sales, default_worker: imran-design }
+
+workers:
+  - { key: sunil-owner, name: Sunil Jain, role: OWNER, email: owner@jaipur-furniture.demo }
+  - { key: pooja-sales, name: Pooja Rathore, role: SALES_WORKER, email: pooja@jaipur-furniture.demo }
+  - { key: imran-design, name: Imran Khan, role: MANAGER, email: imran@jaipur-furniture.demo }
+
+business_hours: { days: Mon-Sat, open: "10:30", close: "20:30" }
+
+ai:
+  persona: Helpful furniture showroom assistant for Jaipur Furniture House
+  confidence_threshold: 0.7
+  tier0_keywords: [hi, hello, hii, namaste, ok, okay, thanks, thank you, dhanyawad, "👍"]
+
+lead:
+  qualify_fields: [interest, budget, timeline, location]
+  interests: [Sofa, Bed, Dining table, Wardrobe, Office chair, Custom furniture]
+  dormant_after_days: 21
+
+followups:
+  - { id: no_reply_nudge, when: no_reply, after: 24h, max: 2, mode: draft, text: "Hi {customer_name}, did you get a chance to look at the {interest} options? We can share photos or a video call from the showroom." }
+  - { id: visit_reminder, when: visit_planned, before: 18h, mode: draft, text: "Hi {customer_name}, looking forward to your visit on {visit_when}. Jaipur Furniture House, {address}." }
+  - { id: visit_noshow, when: visit_passed, after: 4h, mode: draft, text: "Hi {customer_name}, we missed you today. Shall we plan another day?" }
+  - { id: post_visit, when: visited, after: 3h, mode: draft, text: "Thanks for visiting us, {customer_name}! Want a final quote for the {interest} you liked?" }
+  - { id: dormant_revive, when: dormant, after: 30d, mode: draft, text: "Hi {customer_name}, our new collection is in. Shall I share photos?" }
+
+pricing:
+  source: pricing.csv
+  answer_mode: draft
+  confidence_auto_min: 0.85
+  always_approval_if: [discount_request, price_missing, multiple_matches]
+  disclaimer: "Prices include GST{valid_until_text}. Final price depends on fabric, finish and size."
+
+agent:
+  replies: { price: draft, faq: auto, visit_ack: auto, greeting: auto, general: off }
+  greeting_text: "Namaste! Welcome to Jaipur Furniture House. Are you looking for a sofa, bed, dining set or something custom?"
+  visit_ack_text: "Wonderful, we have noted your visit on {visit_when}. Jaipur Furniture House, {address}."
+  address: "MI Road, near Panch Batti, Jaipur"
+
+approvals: { sla_minutes: 30, on_timeout: send_holding_reply }
+learning: { enabled: true, min_examples_before_auto: 5, auto_promote_rate: 0.9 }

@@ -1,0 +1,24 @@
+# Tenant bundle: Delhi Electricals Wholesale. Migrated from qsr/ + tenant-routing.yaml.
+tenant:
+  id: 7b9e4c20-2a3f-4d5e-8f61-2b3c4d5e6f02
+  slug: delhi-electricals
+  name: Delhi Electricals Wholesale
+  city: New Delhi
+  industry: wholesale_distribution
+  timezone: Asia/Kolkata
+
+numbers:
+  - { meta_phone_number_id: "PNID_D_OWNER", display: "+919811000000", label: Owner, default_worker: vikas-owner }
+  - { meta_phone_number_id: "PNID_D_101", display: "+919811011111", label: Sales, default_worker: neha-sales }
+
+workers:
+  - { key: vikas-owner, name: Vikas Khanna, role: OWNER, email: owner@delhi-electricals.demo }
+  - { key: neha-sales, name: Neha Kapoor, role: SALES_WORKER }
+
+ai:
+  persona: Efficient Delhi electricals wholesale assistant
+  confidence_threshold: 0.75
+  tier0_keywords: [hi, hello, ok, thanks, "👍"]
+
+agent:
+  replies: { price: draft, faq: draft, visit_ack: draft, greeting: off, general: off }

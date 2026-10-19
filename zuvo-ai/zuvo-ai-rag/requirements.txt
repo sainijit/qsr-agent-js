@@ -1,0 +1,8 @@
+# zuvo-common (libs/zuvo_common) is installed separately by the Dockerfile
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+google-genai>=1.0
+numpy>=1.26
+pypdf>=4.0
+python-docx>=1.1

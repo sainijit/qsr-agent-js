@@ -1,0 +1,49 @@
+# Tenant bundle: Jaipur Hardware & Sanitary Distributors (B2B wholesale). Migrated from qsr/ + tenant-routing.yaml.
+tenant:
+  id: 3f6c2a10-6d1e-4f0b-9a51-1c2d3e4f5a01
+  slug: jaipur-hardware
+  name: Jaipur Hardware & Sanitary Distributors
+  city: Jaipur
+  industry: wholesale_distribution
+  timezone: Asia/Kolkata
+  currency: INR
+
+numbers:
+  - { meta_phone_number_id: "PNID_OWNER", display: "+919829000000", label: Owner, default_worker: rajesh-owner }
+  - { meta_phone_number_id: "1312713255253790", display: "+15556751665", label: Counter (Meta test number), default_worker: ramesh-counter }
+  - { meta_phone_number_id: "PNID_002", display: "+919829022222", label: Field sales, default_worker: suresh-field }
+  - { meta_phone_number_id: "PNID_003", display: "+919829033333", label: Godown, default_worker: mukesh-godown }
+  - { meta_phone_number_id: "PNID_004", display: "+919829044444", label: Accounts, purpose: service, default_worker: deepak-accounts }
+  - { meta_phone_number_id: "PNID_005", display: "+919829055555", label: Support, purpose: support, default_worker: amit-support }
+
+workers:
+  - { key: rajesh-owner, name: Rajesh Agarwal, role: OWNER, email: owner@jaipur-hardware.demo }
+  - { key: ramesh-counter, name: Ramesh Sharma, role: SALES_WORKER }
+  - { key: suresh-field, name: Suresh Verma, role: SALES_WORKER }
+  - { key: mukesh-godown, name: Mukesh Saini, role: SALES_WORKER }
+  - { key: deepak-accounts, name: Deepak Gupta, role: MANAGER }
+  - { key: amit-support, name: Amit Joshi, role: SALES_WORKER }
+
+business_hours: { days: Mon-Sat, open: "09:30", close: "19:30" }
+
+ai:
+  persona: Polite Jaipur hardware & sanitary trade assistant
+  intents_enabled: [CREATE_ORDER, INQUIRY_PRICE_STOCK, PAYMENT_COMMITMENT, COMPLAINT_RETURN, GENERAL_CHAT, VISIT_PLAN, FAQ]
+  confidence_threshold: 0.80
+  tier0_keywords: [hi, hello, namaste, ok, okay, thanks, thank you, dhanyawad, shukriya, "👍"]
+
+lead:
+  interests: [CPVC pipes, Sanitaryware, Fittings, Taps]
+  dormant_after_days: 30
+
+followups:
+  - { id: no_reply_nudge, when: no_reply, after: 48h, max: 1, mode: draft, text: "Namaste {customer_name}, aapke order ke liye kuch aur chahiye?" }
+  - { id: visit_reminder, when: visit_planned, before: 18h, mode: draft, text: "Namaste {customer_name}, {visit_when} ko aapka intezaar rahega." }
+
+pricing:
+  answer_mode: draft
+  disclaimer: "Rate excl. GST{valid_until_text}. Bulk rates on request."
+
+agent:
+  replies: { price: draft, faq: draft, visit_ack: draft, greeting: off, general: off }
+  address: "Sindhi Camp, Jaipur"

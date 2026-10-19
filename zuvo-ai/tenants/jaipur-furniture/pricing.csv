@@ -1,0 +1,8 @@
+sku,name,category,attrs,price,price_min,price_max,unit,tax_included,valid_until,aliases,notes
+SOFA-3S-TEAK,3 Seater Teak Wood Sofa,Sofa,"{""material"":""teak"",""seats"":3}",,42000,58000,unit,true,,teak sofa|3 seater sofa|three seater,price varies by fabric
+SOFA-L-FAB,L-Shape Fabric Sofa,Sofa,"{""material"":""fabric"",""seats"":5}",,55000,78000,unit,true,,l shape sofa|corner sofa,price varies by fabric
+BED-K-SHEESHAM,King Size Sheesham Bed with Storage,Bed,"{""material"":""sheesham"",""size"":""king""}",,48000,62000,unit,true,,king bed|sheesham bed|double bed,with hydraulic storage
+BED-Q-ENG,Queen Size Engineered Wood Bed,Bed,"{""material"":""engineered wood"",""size"":""queen""}",24500,,,unit,true,,queen bed|engineered bed,
+DINE-6-SHEESHAM,6 Seater Sheesham Dining Set,Dining table,"{""material"":""sheesham"",""seats"":6}",,52000,68000,unit,true,,dining table|6 seater dining|dining set,
+WARD-3D,3 Door Wardrobe with Mirror,Wardrobe,"{""doors"":3}",32000,,,unit,true,,wardrobe|almirah|3 door wardrobe,
+CHAIR-ERGO,Ergonomic Office Chair,Office chair,"{""type"":""mesh""}",8900,,,unit,true,,office chair|study chair,

@@ -1,0 +1,47 @@
+# Copy this folder to tenants/<slug>/ (folder name = tenant.slug), edit, then:
+#   python scripts/onboard_tenant.py tenants/<slug> --validate
+#   python scripts/onboard_tenant.py tenants/<slug> --apply
+tenant:
+  id: 00000000-0000-4000-8000-000000000000   # generate: python -c "import uuid;print(uuid.uuid4())"
+  slug: my-business
+  name: My Business
+  city: Jaipur
+  industry: general
+  timezone: Asia/Kolkata
+  currency: INR
+  languages: [hinglish, hindi, english]
+  monthly_ai_budget_inr: 500
+
+numbers:     # meta_phone_number_id from Meta > WhatsApp > API setup
+  - { meta_phone_number_id: "PNID_MY_01", display: "+919800000001", label: Sales, purpose: sales, default_worker: sales-1 }
+
+workers:     # OWNER receives approvals; email = dashboard login
+  - { key: owner, name: Owner Name, role: OWNER, email: owner@example.com }
+  - { key: sales-1, name: Sales Person, role: SALES_WORKER }
+
+business_hours: { days: Mon-Sat, open: "10:00", close: "19:00" }
+
+ai:
+  persona: Polite, helpful sales assistant
+  tier0_keywords: [hi, hello, ok, thanks]
+
+lead:
+  interests: []
+  dormant_after_days: 14
+
+followups:   # when: no_reply | visit_planned (use before:) | visit_passed | visited | dormant
+  - { id: no_reply_nudge, when: no_reply, after: 24h, max: 2, mode: draft, text: "Hi {customer_name}, any questions about {interest}?" }
+  - { id: visit_reminder, when: visit_planned, before: 18h, mode: draft, text: "Hi {customer_name}, see you on {visit_when}!" }
+  - { id: visit_noshow, when: visit_passed, after: 4h, mode: draft, text: "Hi {customer_name}, shall we plan another day?" }
+
+pricing:
+  answer_mode: draft            # start in draft; learning promotes topics to auto
+  disclaimer: ""
+
+agent:
+  replies: { price: draft, faq: draft, visit_ack: draft, greeting: draft, general: off }
+  address: ""
+
+approvals: { sla_minutes: 15, on_timeout: send_holding_reply }
+learning: { enabled: true, min_examples_before_auto: 5, auto_promote_rate: 0.9 }
+meta_templates: []   # e.g. { name: visit_reminder_v1, language: en_US, category: UTILITY, params: [customer_name, visit_when], approved: true }

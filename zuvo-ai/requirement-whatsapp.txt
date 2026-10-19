@@ -1,0 +1,310 @@
+# ZuvoCloud AI Solution — Detailed Design & Build Requirements (Hermes, Multi-Tenant)
+
+**Purpose:** Hand this to a Copilot coding agent as the authoritative build spec.
+**Backbone:** Allegro **Hermes** (pub/sub over Apache Kafka).
+**Tenancy:** Shared infrastructure, `tenant_id` partitioning everywhere, Postgres **Row-Level Security (RLS)**.
+**Tenant discovery:** central **config file** maps WhatsApp number → `tenant_id`; per-tenant **skill file** (in `qsr/`) defines AI behavior, catalog policy, and business rules.
+**Status:** Detailed Design v2.0 · Covers PRD Modules 1–6, Gates G1–G9.
+
+---
+
+## 0. What We Are Building (Problem & Solution)
+
+Indian MSMEs, wholesalers, and distributors run their entire business over WhatsApp, spread across 5–15 staff phone numbers — so the owner ("Sethji") has zero central visibility, loses 8–15% of orders to missed messages, and cannot track credit risk. We are building **ZuvoCloud**: a multi-tenant AI operations platform that treats WhatsApp as the input terminal (staff keep chatting as usual — no new app) and layers a silent AI copilot on top. It ingests every worker's messages, extracts orders/intents from Hinglish text and voice notes, enforces deterministic credit and discount rules (the AI never invents price or stock), and gives the owner a single live dashboard with worker-level and customer-360° views plus 1-click approvals. Each tenant is onboarded purely by a config file (number→tenant mapping) and a skill file (AI rules), with strict `tenant_id` + row-level-security isolation — all orchestrated over a Hermes/Kafka event backbone.
+
+---
+
+## 1. Multi-Tenancy Model (authoritative rules)
+
+1. **One shared Kafka/Hermes cluster, one shared Postgres cluster.** No per-tenant topics or schemas.
+2. **Every Kafka message** carries a `tenant_id` header (required). Consumers that receive a message without `tenant_id`, or with a `tenant_id` they are not authorized for, must **drop to DLQ and raise an audit event**.
+3. **Every Postgres table** that holds tenant data has a `tenant_id UUID NOT NULL` column and an **RLS policy** keyed on a session variable `app.current_tenant`.
+4. **Partitioning:** Kafka message key = `tenant_id:worker_number` (preserves per-worker ordering within a tenant). Postgres large tables (`messages`, `orders`, `audit_logs`) are `PARTITION BY HASH (tenant_id)`.
+5. **No cross-tenant joins.** Any API path that could read another tenant's data returns **HTTP 403** (Gate G1).
+
+---
+
+## 2. Tenant Discovery & Onboarding
+
+### 2.1 Central config file — number → tenant routing
+Location: `config/tenant-routing.yaml`. Single source of truth for mapping inbound WhatsApp numbers to tenants and workers. Hot-reloaded on change (file watcher) and cached in Redis.
+
+```yaml
+# config/tenant-routing.yaml
+version: 3
+tenants:
+  - tenant_id: "7b1c9e2a-...-uuidv4"
+    name: "Sharma Hardware (VKI)"
+    currency: INR
+    skill_file: "qsr/sharma-hardware/skill.yaml"
+    credit_default_days: 45
+    numbers:
+      - whatsapp_number: "+919829000001"
+        worker_id: "ramesh-counter"
+        role: SALES_WORKER
+      - whatsapp_number: "+919829000002"
+        worker_id: "suresh-field"
+        role: SALES_WORKER
+      - whatsapp_number: "+919829000009"
+        worker_id: "owner"
+        role: OWNER
+  - tenant_id: "a2f4..."
+    name: "Sanganer Textiles"
+    skill_file: "qsr/sanganer-textiles/skill.yaml"
+    numbers: [...]
+```
+
+### 2.2 Per-tenant skill file (in `qsr/`) — AI behavior
+Each tenant owns one skill file under `qsr/<tenant-slug>/skill.yaml`. It defines prompts, allowed intents, catalog policy, discount/credit guardrails, and clarifying-question flows. **No tenant business logic is hardcoded** — it is read from the skill file.
+
+```yaml
+# qsr/sharma-hardware/skill.yaml
+tenant_id: "7b1c9e2a-...-uuidv4"
+language: ["hinglish", "hindi", "english"]
+persona: "Polite Jaipur hardware trader assistant"
+intents:
+  enabled: [CREATE_ORDER, INQUIRY_PRICE_STOCK, PAYMENT_COMMITMENT, COMPLAINT_RETURN, GENERAL_CHAT]
+  confidence_threshold: 0.80         # below -> human approval (G8)
+guardrails:
+  max_auto_discount_pct: 5           # above -> owner approval (G8)
+  credit:
+    formula: "outstanding + draft_orders + new_order > credit_limit"
+    on_breach: PENDING_APPROVAL      # (G4)
+catalog:
+  source_tool: search_item_catalog
+  clarify_before_quote:
+    - dimension   # King vs Queen bed
+    - material    # Sheesham vs engineered
+    - budget
+ai_routing:
+  tier0_keywords: ["hi", "hello", "thanks", "ok"]
+  tier1_model: "qwen-1.5b"
+  tier2_model: "gemini-flash"        # intent + NER + tool calling
+  tier3_model: "claude"              # disputes / complex quotes
+daily_pulse:
+  time: "20:00"
+  timezone: "Asia/Kolkata"
+```
+
+### 2.3 Tenant resolution flow (runtime)
+```mermaid
+sequenceDiagram
+    participant Meta as WhatsApp Cloud API
+    participant GW as Ingestion Gateway
+    participant TR as Tenant Resolver (config + Redis cache)
+    participant SL as Skill Loader (qsr/)
+    participant H as Hermes/Kafka
+    Meta->>GW: webhook (to_number, wamid, body)
+    GW->>GW: verify HMAC-SHA256
+    GW->>TR: resolve(to_number)
+    TR-->>GW: {tenant_id, worker_id, role} or 404->reject
+    GW->>SL: load skill(tenant_id)  (cached)
+    SL-->>GW: skill config (thresholds, intents)
+    GW->>GW: Redis dedup by wamid
+    GW->>H: publish inbound.message.received (headers: tenant_id, worker_id)
+```
+
+**Onboarding a new tenant = add a block to `tenant-routing.yaml` + drop a `qsr/<slug>/skill.yaml` + insert tenant row in DB.** No code change, no redeploy.
+
+---
+
+## 3. Service Architecture
+
+```mermaid
+flowchart LR
+    WA[WhatsApp Cloud API] -->|webhook| GW[Ingestion Gateway]
+    GW -->|resolve| TR[Tenant Resolver\nconfig/tenant-routing.yaml + Redis]
+    GW -->|load| SL[Skill Loader\nqsr/*/skill.yaml]
+    GW -->|publish| H[(Hermes / Kafka)]
+
+    H --> NRM[Normalizer\nSTT + media]
+    NRM --> H
+    H --> AIR[AI Router\nTier 0-3 + NER]
+    AIR --> H
+    H --> MCP[MCP Tool Bus\ncatalog/stock/credit]
+    MCP --> PG[(PostgreSQL + RLS)]
+    MCP --> H
+    H --> OWN[Owner Command Center\nSSE + alerts]
+    OWN --> H
+    H --> DISP[Dispatch Service\nWhatsApp replies]
+    AIR -. audit .-> PG
+    MCP -. audit .-> PG
+    OWN -. reads .-> PG
+```
+
+| Service | Responsibility | Scale unit |
+|---|---|---|
+| Ingestion Gateway | HMAC verify, tenant resolve, skill load, dedup, publish | stateless, N replicas |
+| Tenant Resolver | number→tenant lookup from config, Redis-cached, file-watch reload | library inside Gateway |
+| Skill Loader | parse & cache `qsr/*/skill.yaml`, hot reload | library inside AI Router + Gateway |
+| Normalizer | STT for `.ogg/.opus/.aac`, media normalization | per-tenant-keyed consumer |
+| AI Router | tiered routing, intent classification, NER (uses skill thresholds) | consumer group |
+| MCP Tool Bus | deterministic tools, credit & discount gates, writes DB | consumer group |
+| Owner Command Center | SSE dashboard, filters (worker/customer), approvals, daily pulse | consumer group + web |
+| Dispatch Service | sends WhatsApp replies / catalog cards via Cloud API | consumer group |
+
+---
+
+## 4. Hermes Topic & Event Model
+
+All topics shared; `tenant_id` is a **required header** and part of the Kafka key.
+
+| Topic | Producer | Consumer(s) | Required headers |
+|---|---|---|---|
+| `inbound.message.received` | Gateway | Normalizer | `tenant_id`, `worker_id`, `wamid`, `from_customer` |
+| `inbound.message.normalized` | Normalizer | AI Router | `tenant_id`, `lang`, `media_type` |
+| `ai.intent.extracted` | AI Router | MCP, Owner Center | `tenant_id`, `intent`, `confidence` |
+| `ai.review.flagged` | AI Router | Owner Center | `tenant_id`, `reason=low_confidence` |
+| `order.draft.created` | MCP | Owner Center, Dispatch | `tenant_id`, `customer_id`, `order_id` |
+| `order.pending.approval` | MCP | Owner Center | `tenant_id`, `reason` (credit/discount/low_conf) |
+| `order.approved` / `order.countered` | Owner Center | Dispatch | `tenant_id`, `order_id` |
+| `outbound.reply.requested` | AI Router / Owner | Dispatch | `tenant_id`, `to_number` |
+| `*.DLQ` | any | ops | `tenant_id`, `error`, `original_topic` |
+
+**Canonical event envelope (JSON value):**
+```json
+{
+  "event_id": "uuid",
+  "tenant_id": "uuid",
+  "worker_id": "ramesh-counter",
+  "customer_id": "uuid-or-null",
+  "wamid": "wamid.HBg...",
+  "occurred_at": "2026-10-17T14:05:00+05:30",
+  "payload": { "...stage-specific..." }
+}
+```
+
+**Consumer contract (mandatory for every service):**
+1. Read `tenant_id` header; if missing → DLQ.
+2. `SET LOCAL app.current_tenant = :tenant_id` before any DB access (activates RLS).
+3. Idempotency: skip if `event_id` already processed (Redis set, 24h TTL).
+4. On unrecoverable error → publish to `<topic>.DLQ` with error context + audit row.
+
+---
+
+## 5. Data Model (PostgreSQL + RLS)
+
+```sql
+-- every tenant-scoped table follows this pattern
+CREATE TABLE messages (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    UUID NOT NULL,
+  worker_id    TEXT NOT NULL,
+  customer_id  UUID,
+  wamid        TEXT NOT NULL,
+  direction    TEXT CHECK (direction IN ('IN','OUT')),
+  lang         TEXT,
+  body         TEXT,
+  media_url    TEXT,
+  created_at   TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (tenant_id, wamid)
+) PARTITION BY HASH (tenant_id);
+
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON messages
+  USING (tenant_id = current_setting('app.current_tenant')::uuid);
+```
+
+Core tables (all with `tenant_id` + RLS): `tenants`, `workers`, `customers`, `items`, `stock`, `messages`, `orders`, `order_lines`, `approvals`, `audit_logs`.
+
+- **`orders`** holds status: `DRAFT | PENDING_APPROVAL | APPROVED | COUNTERED | DISPATCHED | CANCELLED`.
+- **`audit_logs`** (G7): append-only; every MCP tool call writes `{tenant_id, tool, params_snapshot, result_hash, actor, ts}`. No UPDATE/DELETE grant.
+- **`customers.account_name`** powers Customer 360° (G6).
+
+---
+
+## 6. Deterministic MCP Tool Bus (Module 4)
+
+AI may **only** act by calling these tools; it never invents price/stock/credit.
+
+| Tool | Signature | Rule |
+|---|---|---|
+| `get_customer_profile` | `(tenant_id, customer_ref) -> Customer` | RLS-scoped |
+| `search_item_catalog` | `(tenant_id, query, filters) -> Item[]` | returns verified SKUs + photos + price |
+| `check_stock` | `(tenant_id, sku) -> qty` | from `stock` |
+| `evaluate_credit_standing` | `(tenant_id, customer_id, new_order_value) -> {ok, outstanding, limit}` | applies skill `credit.formula` (G4) |
+| `create_draft_order` | `(tenant_id, customer_id, lines) -> order_id` | status DRAFT or PENDING_APPROVAL |
+
+**Gate logic in MCP (read from skill file):**
+- `new_order_value + outstanding + draft > credit_limit` → `order.pending.approval` (reason=credit).
+- `requested_discount_pct > max_auto_discount_pct` → `order.pending.approval` (reason=discount).
+- `intent.confidence < confidence_threshold` → `ai.review.flagged` (reason=low_confidence).
+
+---
+
+## 7. AI Router — Tiered, Skill-Driven (Module 3)
+
+1. **Tier 0:** match `tier0_keywords` from skill → canned reply, zero API cost.
+2. **Tier 1:** small model (Qwen) → spam/lang detect.
+3. **Tier 2:** Gemini Flash → Hinglish intent + NER → emit structured JSON on `ai.intent.extracted`.
+4. **Tier 3:** Claude/GPT-4o on-demand → disputes/complex quotes.
+
+NER JSON schema (G3): `{customer_account, sku_name, quantity, units, requested_rate, urgency, intent, confidence}`.
+Thresholds and enabled intents come **from the tenant's skill file**, not code.
+
+---
+
+## 8. Owner Command Center (Module 5, G5/G6)
+
+- **Live feed:** SSE stream, consumer subscribed to all topics, filtered by `app.current_tenant`; target latency < 3.5s (G5).
+- **Filters:**
+  - *Worker view (G6):* `WHERE worker_id = ?` — a worker sees only own threads; owner sees all.
+  - *Customer 360° (G6):* `WHERE customer_id = ? ORDER BY created_at` — unifies all worker lines into one timeline.
+- **Approvals:** 1-click Approve/Counter → publishes `order.approved` / `order.countered`.
+- **8 PM Daily Pulse:** scheduled per tenant (skill `daily_pulse.time`): totals, pending quotes, bad debts, open disputes.
+
+---
+
+## 9. Security
+
+- Webhook **HMAC-SHA256** verification at Gateway (reject on mismatch).
+- Tenant auth: JWT carries `tenant_id` + `role`; middleware sets `app.current_tenant`. Mismatch → **403** (G1).
+- RBAC: `OWNER` (god-mode within tenant), `MANAGER` (approval limits), `SALES_WORKER` (own threads only).
+- Secrets (Meta tokens, DB creds) in a secret manager, never in config/skill files.
+- DLQ + audit on any `tenant_id` mismatch or missing header.
+
+---
+
+## 10. POC Gate → Design Coverage
+
+| Gate | Design element |
+|---|---|
+| G1 Tenant isolation | RLS + `app.current_tenant`; cross-tenant API → 403 |
+| G2 5-worker ingestion | Gateway resolves each number via config; `worker_id` header preserved |
+| G3 Hinglish extraction | AI Router Tier 2 → NER JSON schema |
+| G4 Credit rule | MCP credit formula from skill → `order.pending.approval` |
+| G5 Dashboard < 3.5s | Owner Center SSE consumer |
+| G6 Worker/Customer views | `worker_id` filter + `customer_id` 360° timeline |
+| G7 Audit trail | append-only `audit_logs`, every tool call |
+| G8 Catalog + 80% gate | skill `confidence_threshold` + `max_auto_discount_pct` |
+| G9 Voice STT | Normalizer transcribes `.ogg/.opus` → normalized event |
+
+---
+
+## 11. Build Order for the Copilot Agent (tasks)
+
+**Milestone 1 — Infra & ingestion (G1, G2)**
+- [ ] Provision Kafka + Hermes, Postgres (RLS enabled), Redis.
+- [ ] Implement `config/tenant-routing.yaml` loader with file-watch + Redis cache.
+- [ ] Implement `qsr/` skill loader (YAML schema validation, hot reload).
+- [ ] Ingestion Gateway: HMAC verify → tenant resolve → skill load → wamid dedup → publish `inbound.message.received`.
+- [ ] RLS migrations for all tenant tables; consumer helper that sets `app.current_tenant`.
+
+**Milestone 2 — AI & tools (G3, G4, G8, G9)**
+- [ ] Normalizer with STT.
+- [ ] AI Router with Tier 0–3 routing driven by skill file; emit NER JSON.
+- [ ] MCP Tool Bus: 5 deterministic tools + credit/discount gates → approval events.
+
+**Milestone 3 — Owner Center (G5, G6)**
+- [ ] SSE live feed; worker filter + customer 360° timeline.
+- [ ] 1-click approval topics; 8 PM daily pulse scheduler.
+
+**Milestone 4 — Hardening (G7)**
+- [ ] DLQ on every consumer; append-only audit logging.
+- [ ] Load test 500 transcripts; onboard 3 pilot tenants by config + skill files only.
+
+---
+
+## 12. Definition of Done
+- New tenant can be onboarded with **only** a `tenant-routing.yaml` entry + a `qsr/<slug>/skill.yaml` + a DB tenant row (no code change).
+- All 9 gates pass; cross-tenant access provably returns 403; every tool call is audited.

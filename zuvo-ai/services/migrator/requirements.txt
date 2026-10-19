@@ -1,0 +1,2 @@
+# zuvo-common (libs/zuvo_common) is installed separately by the Dockerfile
+alembic>=1.13

@@ -1,0 +1,105 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Node & Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+dist/
+.npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment & Secrets (NEVER COMMIT SENSITIVE KEYS)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.cert
+*.crt
+
+# Local Databases & State
+*.db
+*.sqlite
+*.sqlite3
+zuvo_local.db
+
+# Logs & Executables
+*.log
+ngrok.log
+ngrok.exe
+*.exe
+*.dll
+
+# Machine Learning Heavy Model Weights & Checkpoints (root directories or binary extensions)
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.gguf
+*.h5
+*.tflite
+*.ckpt
+*.joblib
+/models/
+/weights/
+/checkpoints/
+
+# IDE, Editor & OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+~$*.docx
+~$*.xlsx
+~$*.pptx
+
+
+.tunnel/
+
+# deploy release records / lock (scripts/deploy)
+.deploy/

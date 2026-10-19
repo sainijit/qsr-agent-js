@@ -1,0 +1,67 @@
+# zuvo-ai-rag configuration. Every key can be overridden with an env var:
+#   ZUVO_RAG__<SECTION>__<KEY>=value   e.g. ZUVO_RAG__RETRIEVAL__MIN_SIMILARITY=0.62
+# Secrets (GEMINI_API_KEY, RAG_SERVICE_TOKEN, DATABASE_URL) come from the
+# environment via zuvo_common settings, never from this file.
+
+server:
+  host: "0.0.0.0"
+  port: 8020
+
+gemini:
+  # Embeddings: multilingual (handles Hinglish). Changing model or dimensions
+  # re-indexes every tenant automatically (kb_documents.indexed_model differs).
+  embed_model: "gemini-embedding-001"
+  embed_dimensions: 768          # must match kb_chunks.embedding vector(768)
+  embed_batch_size: 50
+  # Text model for the /answer playground, optional LLM rerank and optional
+  # LLM chunk splitting. Empty = use ZUVO_GEMINI_MODEL.
+  text_model: ""
+  timeout_seconds: 20
+  max_attempts: 3                # retries timeouts / 429 / 5xx with 1s, 2s backoff
+
+indexer:
+  enabled: true
+  poll_seconds: 10               # reconcile loop: re-index docs whose checksum/model changed
+  max_docs_per_tick: 20
+
+retrieval:
+  top_k: 3
+  fetch_k: 10                    # candidates per arm (vector, full-text) before fusion
+  rrf_k: 60                      # reciprocal-rank-fusion constant
+  # Cosine similarity floor (vector arm) for a chunk to count as relevant.
+  # Probe with gemini-embedding-001 @768: in-domain 0.66-0.84, off-topic ~0.57.
+  # Calibrated per corpus by scripts/evaluate_rag.py.
+  min_similarity: 0.6
+  query_cache_ttl_seconds: 604800
+  rerank:
+    mode: "none"                 # none | llm  (Gemini listwise rerank of fused candidates)
+    min_score: 5                 # 0-10, llm mode only
+
+chunking:
+  max_chunk_chars: 1200
+  min_chunk_chars: 200
+  overlap_chars: 0
+  # Similarity for merging below-min chunks into a neighbour. Uses the local
+  # hashing embedder (bag of words), not Gemini, so ingest costs no API calls.
+  semantic_similarity_threshold: 0.2
+  llm_split: false               # true = Gemini marker split of long passages
+  llm_passage_chars: 6000
+  llm_passage_tokens: 0          # 0 = char windows (no tokenizer needed)
+  llm_passage_overlap_tokens: 0
+  llm_min_passage_chars: 1200
+  save_chunks_debug: null
+  max_ingest_chars: 100000       # ~25k tokens
+
+answering:
+  # /answer playground only. Customer replies are drafted by agent-worker.
+  system_prompt: |
+    You answer customer questions for a business on WhatsApp.
+    Use ONLY the retrieved knowledge-base context. Never invent prices, numbers,
+    dates, discounts or promises that are not in the context.
+    Reply in the customer's language; Hinglish customers get Roman-script Hinglish.
+    Keep it short: 1 to 4 sentences.
+  fallback_to_general_knowledge: false
+  include_source_markers: false
+  history_turns: 2
+  max_context_chars: 6000
+  max_tokens: 300

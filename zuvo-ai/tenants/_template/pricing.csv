@@ -1,0 +1,2 @@
+sku,name,category,attrs,price,price_min,price_max,unit,tax_included,valid_until,aliases,notes
+ITEM-1,Example item,Category,"{""colour"":""red""}",1000,,,unit,true,2026-12-31,example|sample,

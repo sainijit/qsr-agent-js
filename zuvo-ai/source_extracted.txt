@@ -1,0 +1,363 @@
+ZuvoCloud — Multi-Tenant WhatsApp AI Business Operations PlatformComprehensive Requirement & Architecture Input Document
+Purpose: Source document for feeding into Gemini Pro to produce a curated Product Requirements Document (PRD), technical requirements, and implementation plan.Status: Concept / POC planning | Target market: Jaipur, Rajasthan, India
+1. Executive Summary
+ZuvoCloud is intended to become a multi-tenant SaaS platform for small and medium businesses, initially targeting businesses in Jaipur that already manage customer/order conversations primarily through WhatsApp. The core product should not attempt to replace WhatsApp. Instead, it should add an AI-powered operational layer on top of existing WhatsApp workflows: centralized visibility across multiple employee/worker WhatsApp numbers, structured business data, AI-assisted understanding and action, and an owner dashboard showing what is happening across the business.
+The first objective is commercial validation, not maximum technical sophistication. The POC should demonstrate a realistic business workflow with multiple workers/numbers under one business tenant, AI-assisted message processing, business tools, and an owner dashboard.
+2. Business Context
+Founder: Jitendra, with extensive software engineering experience and Intel background.
+Co-founder/family business operator: Jitendra's brother, currently available to help operate/build the business.
+Existing company: ZuvoCloud Pvt Ltd / zuvocloud.com.
+Initial geographic target: Jaipur, Rajasthan, because the brother will be based there and can support customer acquisition, onboarding, and local operations.
+The business should initially focus on solving a concrete operational pain rather than building a generic AI chatbot.
+Observed problem: many local businesses manage orders, customer inquiries, quotations, follow-ups, and other operations through WhatsApp, often across several employees/numbers.
+Business owner pain: lack of centralized visibility into conversations, orders, leads, employee activity, pending actions, and business status.
+Potential value proposition: keep WhatsApp as the employee/customer communication channel while ZuvoCloud provides intelligence, automation, structure, and owner-level visibility.
+3. Product Vision
+Build ZuvoCloud as a multi-tenant AI business operations platform where a business can connect multiple WhatsApp numbers/workers. ZuvoCloud ingests permitted WhatsApp business messages, identifies the tenant and worker, understands business intent, extracts structured information, invokes tenant-scoped business tools when appropriate, and presents an owner dashboard aggregating activity across the business.
+The product should evolve from a WhatsApp intelligence/operations layer into a broader AI-native business operating system for SMEs.
+4. Initial Target Customer
+Geography: Jaipur first.
+Ideal early customer: SME/distributor/trader/service business where customer communication and orders are already handled heavily through WhatsApp.
+Business characteristics: multiple sales/support/order-handling employees; multiple WhatsApp numbers; owner wants visibility without forcing employees to abandon WhatsApp.
+Avoid initially targeting businesses where WhatsApp is not a meaningful operational channel.
+Initial customer discovery should validate which vertical has the strongest pain and willingness to pay.
+5. Core Problem Statement
+Customer messages and orders are fragmented across multiple WhatsApp numbers.
+Owner cannot easily see what is happening across all five or more workers.
+Important orders, leads, complaints, quotations, payments, and follow-ups can be missed.
+Business information is trapped in unstructured conversations.
+Owners may be forced to manually ask employees for status.
+Existing WhatsApp workflows are familiar, so forcing a separate CRM/chat interface would create adoption friction.
+6. Core Product Principle
+Do not replace WhatsApp in the first product. Augment it. Employees should be able to continue working through WhatsApp while ZuvoCloud creates a structured, searchable, AI-assisted operational view for the business owner.
+7. POC Scope
+7.1 Must-have POC capabilities
+Multi-tenant architecture from day one.
+Tenant/business creation and isolation.
+Multiple workers/users per tenant.
+Multiple WhatsApp business numbers per tenant.
+Mapping of WhatsApp number -> tenant -> worker/user.
+Inbound WhatsApp webhook/message ingestion.
+Message persistence with tenant-scoped storage.
+Conversation/thread representation.
+AI message understanding.
+Intent classification.
+Entity extraction.
+Structured order/lead/task/event extraction.
+AI agent/tool calling.
+Tenant-scoped customer/product/order tools.
+Owner dashboard aggregating activity across all worker numbers.
+Worker-level filtering.
+Customer/conversation search.
+Basic order/lead/status views.
+Audit/event logging.
+AI provider abstraction.
+Cloud LLM integration for complex reasoning.
+Local small model option for development/simple tasks.
+7.2 Explicitly defer from first POC
+Dedicated GPU inference server per tenant.
+Kubernetes unless scale requires it.
+Complex multi-agent architecture.
+Full ERP/CRM replacement.
+Large autonomous action surface without approval controls.
+Fine-tuning a foundation model.
+Dedicated database per tenant.
+Enterprise-grade on-premise deployment.
+Large-scale outbound marketing automation.
+Building a proprietary LLM.
+8. Example User Experience
+Example inbound message:
+“Sharma Traders ko 50 box 20mm pipe kal bhej dena.”
+Expected AI extraction conceptually:
+{"intent":"create_order","customer":"Sharma Traders","product":"20mm pipe","quantity":50,"delivery_date":"tomorrow"}
+The AI should not directly invent business facts. It should use tenant-scoped tools to resolve the customer, product, inventory, pricing, credit, and order state.
+9. Complex Reasoning Example
+Example: “Sharma Traders ko last month wale rate pe 50 boxes bhej do, lekin agar credit limit cross ho rahi hai toh owner approval lena.”
+Identify customer.
+Retrieve relevant previous order/pricing.
+Check current product/inventory.
+Check credit status/limit.
+Apply deterministic business rules.
+If approval is required, create approval task/notification rather than silently placing an unauthorized order.
+If all conditions are satisfied, create order through a controlled business tool.
+Record the complete action/audit trail.
+10. Functional Requirements
+10.1 Tenant Management
+Each business is a tenant.
+Tenant has unique identifier.
+Tenant configuration must be isolated.
+Tenant has users/workers with roles.
+Tenant has connected WhatsApp business numbers.
+Tenant may have business-specific products, customers, pricing, policies, and rules.
+Tenant-scoped AI context must never expose another tenant's data.
+10.2 Users and Roles
+Owner/admin role.
+Worker/employee role.
+Optional manager role for future.
+Owner can view aggregated activity.
+Workers should have only the permissions needed for their work.
+Authorization must be enforced server-side, not only in the UI.
+10.3 WhatsApp Integration
+Use official WhatsApp Business Platform/Meta integration for production.
+Receive inbound messages through webhooks.
+Persist message metadata and content according to applicable privacy/data policies.
+Identify tenant and worker from connected WhatsApp number.
+Support multiple numbers under one tenant.
+Maintain conversation/thread state.
+Support outbound responses only through authorized WhatsApp APIs and tenant permissions.
+Track delivery/status events where available.
+Do not assume every message category is free; Meta pricing/category rules must be checked against the live India rate card before launch.
+10.4 AI Message Understanding
+Language and Hinglish-friendly understanding.
+Intent classification.
+Entity extraction.
+Structured JSON outputs where appropriate.
+Order extraction.
+Lead/inquiry extraction.
+Quotation-related intent.
+Complaint/support intent.
+Follow-up/task extraction.
+Unknown/ambiguous intent handling.
+Confidence/uncertainty representation where useful.
+Escalation to human/owner when confidence is low or an action is risky.
+10.5 Agent and Tool Calling
+Use Hermes as the agent/orchestration layer if its final capabilities and licensing fit the selected implementation.
+Keep LLM provider independent from the agent layer.
+Use MCP-compatible business tools where practical.
+Initial tools: get_customer, search_product, get_previous_order, check_inventory, get_price, check_credit, create_order, create_task, notify_owner.
+All tools must enforce tenant_id and authorization.
+Tools are the source of truth for business facts.
+LLM is responsible for language/reasoning/tool selection, not authoritative business state.
+Business rules such as credit limits, permissions, approval thresholds, and pricing rules must be deterministic in backend services.
+10.6 Owner Dashboard
+Business-wide activity overview.
+Aggregate messages across all connected worker numbers.
+Filter by worker.
+Filter by customer.
+Filter by conversation/status/date.
+Orders detected/created.
+Pending approvals.
+Pending follow-ups/tasks.
+Leads/inquiries.
+Complaints/escalations.
+Recent important conversations.
+AI-generated business summaries/insights can be added after the basic dashboard works.
+Dashboard must make it unnecessary for the owner to manually inspect five separate WhatsApp numbers to understand operational status.
+11. Data Model — Initial Logical Entities
+Tenant
+User
+Role/Permission
+WhatsAppNumber
+Customer
+Product
+Conversation
+Message
+Order
+OrderItem
+Lead
+Task/FollowUp
+Approval
+BusinessRule
+AIInteraction
+ToolCall
+AuditEvent
+Every tenant-owned entity should carry tenant_id or be deterministically reachable through a tenant-scoped parent. Application-level tenant scoping is mandatory; PostgreSQL Row-Level Security may be added for defense in depth.
+12. Multi-Tenant Security Requirements
+Never mix tenant context in prompts, tool calls, database queries, caches, or background jobs.
+Every authenticated request must resolve tenant_id from trusted authentication/session context.
+Never trust tenant_id supplied directly by an untrusted client.
+Every database query involving tenant data must be tenant-scoped.
+Every AI tool call must receive and enforce tenant context.
+Redis/cache keys must include tenant identity where data is tenant-specific.
+Background jobs must carry tenant context explicitly.
+Audit security-sensitive actions.
+Store API keys/secrets in a secret-management system, never in frontend code.
+LLM requests should contain only the minimum context required for the task.
+13. AI Architecture
+Use an AI Gateway/LLM abstraction between Hermes and all model providers. The application should not hard-code one provider.
+LLMProvider interface should support generation, structured output, and tool calling.
+Initial cloud provider should be configurable.
+Current preferred Phase-1 direction discussed: Gemini family for cost/performance, with Claude/OpenAI retained for benchmarking/fallback.
+Do not make a final provider decision solely from generic benchmarks; evaluate on a representative set of real/anonymized WhatsApp messages.
+Benchmark dimensions: intent accuracy, entity extraction, tool-call correctness, hallucination rate, incorrect actions, latency, token cost, Hinglish performance.
+Local Qwen should be supported as a development/simple-task provider.
+Future production optimization: route simple/high-volume tasks to smaller/local models and complex reasoning to a frontier cloud model.
+Future private deployment: Qwen + OpenVINO/OVMS on customer or ZuvoCloud-managed hardware.
+14. Recommended AI Routing Strategy
+Tier 0: deterministic code/rules for trivial known states where no model is required.
+Tier 1: small model for classification, extraction, simple orders, language detection, and routine messages.
+Tier 2: stronger reasoning model for ambiguous/multi-step business tasks and owner-level analysis.
+Tier 3: premium reasoning fallback only for genuinely complex tasks.
+Do not send every WhatsApp message to an expensive frontier model.
+15. Local Development AI
+Primary development machine: MacBook configuration discussed as 32 GB RAM, 512 GB SSD, Core i7 (exact model identifier should be verified before final hardware documentation).
+Older T480 with 8 GB RAM is sufficient for lightweight application development but is more RAM constrained.
+Local small-model experimentation: Qwen3-class 0.6B/1.7B quantized models are appropriate; 4B may be possible on 32 GB RAM but inference speed depends on hardware/runtime.
+Use Ollama or llama.cpp for simple local development.
+Local model is a development/testing and simple-task option, not the initial production inference architecture.
+Avoid running a large 7B/8B+ reasoning model on the 8 GB T480 while simultaneously running the full development stack.
+16. Cloud Deployment — Phase 1
+Preferred direction discussed: Google Cloud Platform, primarily because a simple Cloud Run + managed PostgreSQL architecture minimizes operational overhead during business validation.
+Cloud Run for containerized API/backend/worker components.
+Managed PostgreSQL via Cloud SQL.
+Cloud Storage for files/artifacts if required.
+Secret Manager for API credentials/secrets.
+Redis/queue should be kept small initially; do not provision expensive managed infrastructure before traffic justifies it.
+Do not deploy a dedicated GPU model server in Phase 1 unless there is a specific benchmark/demo requirement.
+Use an India-region deployment where appropriate, with Mumbai/asia-south1 as the initial candidate.
+Use Docker containers so the same application can later move to Kubernetes/GKE or another cloud.
+Kubernetes should be deferred until scale/operational needs justify it.
+17. Phase-1 Deployment Architecture
+Conceptual deployment:
+Internet/WhatsApp → API Gateway/Load Balancer → Cloud Run API → Tenant/Auth layer → PostgreSQL/Redis; AI Gateway → Hermes → configured LLM provider; background workers process asynchronous jobs.
+Frontend can be deployed as a container/static web application.
+API and worker should be independently scalable when needed.
+AI Gateway should isolate provider-specific SDKs.
+Use asynchronous processing for inbound message events where appropriate.
+Implement idempotency for webhook/message processing.
+Add structured logs, metrics, tracing, and audit events before real customer onboarding.
+18. Cloud Cost Strategy
+Do not rent a GPU server for Phase 1.
+Initial cloud infrastructure target discussed: roughly ₹5,000–₹12,000/month as a planning envelope, excluding LLM API usage, Meta/WhatsApp charges, and unusual traffic; actual pricing must be recalculated from live provider pricing.
+Track LLM cost separately from infrastructure.
+Track per-tenant message count, tokens, model, latency, and estimated inference cost.
+Set a development spending ceiling until paying customers exist.
+Optimize model routing before optimizing infrastructure.
+19. WhatsApp/Meta Cost Considerations
+Meta WhatsApp Business Platform pricing is message/category dependent and can change; verify current India pricing at launch.
+Service conversations/replies within applicable customer-service windows may have different/free treatment than outbound marketing, utility, or authentication messages.
+Do not hard-code an assumed ₹0 Meta cost for the entire product.
+Maintain usage accounting by tenant and message category.
+Future billing should distinguish ZuvoCloud subscription, AI usage, WhatsApp/Meta pass-through or included usage, and premium features.
+20. Business Rules and Safety
+LLM must never be the authoritative source for inventory, pricing, customer credit, order state, permissions, or approval requirements.
+Backend services and deterministic rules are authoritative.
+High-risk actions should require explicit approval based on tenant rules.
+AI should be able to ask for clarification instead of guessing.
+Every consequential tool action should be auditable.
+Support human override and correction.
+Maintain an AIInteraction/ToolCall/AuditEvent trail sufficient to reconstruct why an action occurred.
+21. Observability and Metrics
+Messages received per tenant.
+Messages processed.
+AI requests by model/provider.
+Input/output tokens.
+Cost estimate per tenant.
+AI latency and end-to-end latency.
+Tool-call success/failure.
+Order extraction accuracy.
+Human correction rate.
+Escalation rate.
+Webhook failures/retries.
+Queue depth/processing delay.
+Tenant activity and feature adoption.
+22. Commercial Validation Plan
+Start Jaipur-first with direct founder/brother-led customer discovery.
+Do not build a huge platform before identifying a high-pain vertical.
+Find businesses where 3–10+ employees actively handle WhatsApp conversations.
+Demonstrate the same WhatsApp workflow plus centralized owner dashboard.
+Pilot with one real business before scaling infrastructure.
+Capture real/anonymized message samples for model evaluation.
+Measure whether owners value visibility, missed-order reduction, follow-up management, and AI-assisted operations.
+Use pilot results to select the strongest initial vertical and pricing.
+23. Suggested POC Demo
+Create a demo tenant representing a Jaipur SME/distributor.
+Create five worker accounts/numbers.
+Simulate or ingest customer messages for each worker.
+Show messages arriving into ZuvoCloud.
+AI identifies customer, intent, product, quantity, date, lead/order/complaint.
+AI invokes tenant-scoped tools.
+Dashboard aggregates activity from all five workers.
+Owner can filter by worker/customer/status.
+Show an approval case where deterministic credit rules stop automatic order creation.
+Show a complex query answered using business data.
+Demonstrate that employees can continue using WhatsApp rather than learning a new order-entry UI.
+24. Non-Functional Requirements
+Multi-tenant isolation is a critical requirement.
+API must be stateless where practical.
+Webhook processing should be idempotent.
+Background jobs should be retryable.
+System should tolerate temporary LLM/API failures and retry/fallback appropriately.
+No single LLM provider should be a hard architectural dependency.
+Secrets must not be committed to source control.
+Database backups must be enabled before real customer data is onboarded.
+Production logging must avoid unnecessary sensitive message duplication.
+The architecture should support future horizontal scaling.
+The architecture should support future local/private inference.
+25. Technology Direction
+Backend: Python/FastAPI is the preferred direction for the AI-heavy POC.
+Frontend: React/TypeScript.
+Database: PostgreSQL.
+Cache/queue: Redis or an appropriate lightweight managed/self-hosted option initially.
+Agent: Hermes, subject to final capability/licensing validation.
+Tool protocol: MCP-compatible tools where beneficial.
+Cloud: GCP/Cloud Run direction for Phase 1.
+Containers: Docker.
+Local model runtime: Ollama or llama.cpp for development.
+Future local inference: Qwen + OpenVINO/OVMS.
+Authentication/authorization: production-grade identity with tenant-aware RBAC.
+26. Future Architecture — Scale
+Once usage reaches meaningful scale, evolve toward shared inference infrastructure rather than one model server per tenant.
+Shared Qwen/OpenVINO/OVMS inference cluster for routine workloads.
+Cloud frontier model fallback for complex reasoning.
+AI Gateway routes based on task complexity, cost, latency, tenant policy, and availability.
+Kubernetes/GKE only when operational scale warrants it.
+Dedicated database or dedicated deployment can become an enterprise tier.
+Private/on-premise/edge deployment can be offered to customers with privacy or network requirements.
+27. Future Private/Edge Product
+A future ZuvoCloud Edge product can leverage the team's Intel/OpenVINO expertise.
+Customer-hosted or ZuvoCloud-managed local inference.
+Qwen-family model served using OpenVINO/OVMS where hardware/model compatibility supports it.
+Cloud reasoning fallback can remain optional.
+Customer data processing can be kept closer to the customer's environment, subject to WhatsApp/Meta integration constraints and applicable compliance requirements.
+Potential enterprise differentiator: private AI business operations rather than only a generic cloud AI wrapper.
+28. Important Architectural Decisions Already Reached
+Target Jaipur first.
+Do not open a full office before validating demand; use local presence/customer visits through the brother and keep fixed costs low.
+Focus initially on WhatsApp-heavy SMEs rather than generic software projects.
+Product should augment WhatsApp rather than force employees to abandon it.
+Support multiple workers/numbers under one business.
+Owner dashboard is a core differentiator.
+Build multi-tenancy from the beginning.
+Use cloud LLM inference for Phase 1 rather than operating a dedicated GPU server.
+Use an AI Gateway/provider abstraction from day one.
+Use Hermes as an agent/orchestration layer if validated, not as the LLM itself.
+Keep business truth and rules in backend/database, not inside the LLM.
+Use local small Qwen for development/simple tasks where useful.
+Do not start with Kubernetes or dedicated GPUs.
+Optimize inference only after real customer/message volume exists.
+29. Open Questions for Gemini Pro to Resolve
+Identify the best initial Jaipur vertical based on the described WhatsApp workflow and recommend one narrow ICP.
+Turn this source document into a formal PRD with MVP vs Phase 2 vs Phase 3 scope.
+Define exact user journeys for owner, manager, worker, and customer.
+Define the exact WhatsApp Business Platform integration and Meta onboarding requirements.
+Recommend the final LLM provider/model after comparing current Gemini, Claude, OpenAI, and Qwen options using current pricing and tool-calling capabilities.
+Design a robust multi-tenant database schema and authorization model.
+Define the exact MCP/tool schemas and tool authorization boundaries.
+Define AI routing policy and when to use small local model vs cloud reasoning model.
+Estimate LLM, cloud, WhatsApp, and storage costs for 1, 10, 50, and 100 tenants using realistic message volumes.
+Define security/privacy/compliance requirements for Indian SME business data.
+Define POC implementation plan with milestones, engineering tasks, and acceptance criteria.
+Define a demo script that proves ROI to a Jaipur business owner.
+Recommend a practical pricing model and unit economics.
+Identify technical risks, business risks, and mitigations.
+Recommend whether the first deployment should be GCP Cloud Run or an alternative after considering current pricing and service availability in India.
+30. POC Acceptance Criteria
+At least one tenant can be created.
+At least five workers/users can belong to one tenant.
+Multiple WhatsApp numbers can map to the same tenant.
+Inbound messages are correctly mapped to tenant and worker.
+Messages are persisted and displayed.
+AI can classify/extract at least the initial supported intents.
+AI can call at least three tenant-scoped business tools.
+Tenant A cannot access Tenant B's customers/messages/orders through API, UI, cache, background job, or AI tools.
+Owner dashboard aggregates all worker activity.
+Owner can filter activity by worker/customer/status.
+A business rule can prevent an unsafe/unauthorized order and create an approval task.
+LLM provider can be swapped through configuration/provider abstraction.
+Local development can use a small local model without changing business logic.
+Cloud deployment can run without a dedicated GPU.
+Basic audit logs exist for AI/tool-driven business actions.
+31. Guidance to Gemini Pro
+Use this document as a source-of-truth context, but do not blindly preserve every technology choice. Distinguish clearly between finalized requirements, strong recommendations, assumptions, and open decisions. Where a provider/model/pricing/API capability may have changed, verify it against current official documentation. Produce a curated PRD that is commercially focused, avoids premature engineering complexity, and prioritizes a Jaipur pilot.
+The desired outcome is not merely an AI chatbot. The product should demonstrate measurable business value: centralized visibility across multiple WhatsApp workers, reduced missed opportunities/orders, structured operational data, AI-assisted actions, and owner control.

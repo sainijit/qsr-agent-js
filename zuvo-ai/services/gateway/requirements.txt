@@ -1,0 +1,3 @@
+# zuvo-common (libs/zuvo_common) is installed separately by the Dockerfile
+fastapi>=0.110
+uvicorn[standard]>=0.29

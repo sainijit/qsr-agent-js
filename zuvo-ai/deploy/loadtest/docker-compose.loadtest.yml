@@ -1,0 +1,51 @@
+# Load-test overlay: routes every Gemini call (ai-router, agent-worker, zuvo-ai-rag) to a local mock, so a load test
+# makes no paid AI requests. TEST ENVIRONMENTS ONLY - never add this file on the production VM.
+#
+#   export ZUVO_COMPOSE_EXTRA=deploy/loadtest/docker-compose.loadtest.yml
+#   scripts/deploy/dcp up -d gemini-mock ai-router agent-worker zuvo-ai-rag
+#   python3 scripts/loadtest/zuvo_load.py --help
+#
+# Remove it again with: unset ZUVO_COMPOSE_EXTRA; scripts/deploy/dcp up -d ai-router agent-worker zuvo-ai-rag
+# (and `docker rm -f <project>-gemini-mock-1`). Combine with META_DRY_RUN=true so dispatch never calls Meta.
+services:
+  gemini-mock:
+    # reuses an already-built release image for its Python runtime; no extra image to pull or build
+    image: ${ZUVO_IMAGE_PREFIX:-zuvo}/gateway:${IMAGE_TAG:-local}
+    networks: [zuvo]
+    entrypoint: ["python", "/mock/gemini_mock.py"]
+    volumes:
+      - ./deploy/loadtest/gemini_mock.py:/mock/gemini_mock.py:ro
+    environment:
+      MOCK_LATENCY_MS: ${MOCK_LATENCY_MS:-700}
+      MOCK_EMBED_LATENCY_MS: ${MOCK_EMBED_LATENCY_MS:-120}
+      MOCK_JITTER_MS: ${MOCK_JITTER_MS:-250}
+      MOCK_ERROR_RATE: ${MOCK_ERROR_RATE:-0}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/_stats', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 64m
+    restart: unless-stopped
+
+  # NO_PROXY: the base compose file routes AI services through HTTP_PROXY when one is set; the mock must bypass it
+  ai-router:
+    environment:
+      GOOGLE_GEMINI_BASE_URL: http://gemini-mock:8080
+      NO_PROXY: gemini-mock,kafka,postgres,redis,gateway,dashboard-api,localhost,127.0.0.1
+    depends_on:
+      gemini-mock: { condition: service_healthy }
+
+  agent-worker:
+    environment:
+      GOOGLE_GEMINI_BASE_URL: http://gemini-mock:8080
+      NO_PROXY: gemini-mock,kafka,postgres,redis,gateway,dashboard-api,zuvo-ai-rag,localhost,127.0.0.1
+    depends_on:
+      gemini-mock: { condition: service_healthy }
+
+  zuvo-ai-rag:
+    environment:
+      GOOGLE_GEMINI_BASE_URL: http://gemini-mock:8080
+      NO_PROXY: gemini-mock,kafka,postgres,redis,localhost,127.0.0.1
+    depends_on:
+      gemini-mock: { condition: service_healthy }

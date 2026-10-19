@@ -1,0 +1,5 @@
+# Legacy number -> tenant routing. Tenants now live in tenants/<slug>/config.yaml (bundles) and are
+# merged in automatically; a bundle wins over an entry here with the same tenant_id. Keep this file
+# (services mount it) but prefer bundles for new tenants.
+version: 2
+tenants: []

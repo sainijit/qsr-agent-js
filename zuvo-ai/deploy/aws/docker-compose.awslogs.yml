@@ -1,0 +1,149 @@
+# Opt-in: ship container logs to CloudWatch Logs (one log group per service).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f deploy/aws/docker-compose.awslogs.yml up -d
+#
+# Requires: an EC2 instance role allowing logs:CreateLogGroup/CreateLogStream/PutLogEvents on
+# arn:aws:logs:<region>:<account>:log-group:/zuvo/*  and  AWS_REGION in .env.
+# Docker >= 20.10 "dual logging" keeps `docker compose logs` working locally.
+# `mode: non-blocking` keeps a CloudWatch outage from blocking the app (logs may drop if the buffer fills).
+# Cost: CloudWatch ingest is ~$0.50/GB (+ storage); set retention on /zuvo/* (see docs/observability.md).
+
+x-awslogs: &awslogs
+  driver: awslogs
+
+services:
+  caddy:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/caddy
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  frontend:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/frontend
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  kafka:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/kafka
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  postgres:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/postgres
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  redis:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/redis
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  migrator:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/migrator
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  gateway:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/gateway
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  dashboard-api:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/dashboard-api
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  persister:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/persister
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  ai-router:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/ai-router
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  lead-service:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/lead-service
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  agent-worker:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/agent-worker
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  dispatch:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/dispatch
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  followup-scheduler:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/followup-scheduler
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m
+  zuvo-ai-rag:
+    logging:
+      <<: *awslogs
+      options: !override
+        awslogs-region: ${AWS_REGION:-ap-south-1}
+        awslogs-group: /zuvo/zuvo-ai-rag
+        awslogs-create-group: "true"
+        mode: non-blocking
+        max-buffer-size: 4m

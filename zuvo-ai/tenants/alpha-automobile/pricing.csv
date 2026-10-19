@@ -1,0 +1,4 @@
+sku,name,category,attrs,price,price_min,price_max,unit,tax_included,valid_until,aliases,notes
+SVC-GENERAL,General service,Service,{},,2499,,unit,false,2026-12-31,car service|general service|periodic service|servicing,starting price; final cost depends on car model and work needed
+BODY-DENT-PAINT,Denting and painting,Body shop,{},,1999,,unit,false,2026-12-31,denting|painting|dent paint|denting painting|scratch repair,starting price; final cost depends on damage and paint brand
+BODY-FULL-PAINT,Full body painting,Body shop,{},,24999,,unit,false,2026-12-31,full body paint|full painting|car repaint|complete paint,starting price; final cost depends on car size and paint brand (Nippon / DuPont / Hindustan)

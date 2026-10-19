@@ -1,0 +1,5 @@
+sku,name,category,attrs,price,price_min,price_max,unit,tax_included,valid_until,aliases,notes
+CPVC-1-SDR11,CPVC Pipe 1 inch SDR11 (3m),Pipes,"{""size"":""1 inch"",""class"":""SDR11""}",780,,,length,false,,1 inch cpvc|cpvc 1 inch|1 inch pipe,
+CPVC-075-SDR11,CPVC Pipe 3/4 inch SDR11 (3m),Pipes,"{""size"":""3/4 inch"",""class"":""SDR11""}",520,,,length,false,,3/4 cpvc|three quarter inch,
+WC-EWC-WHITE,EWC Floor Mounted Toilet (White),Sanitaryware,"{""colour"":""white""}",,4200,6800,piece,false,,ewc|commode|western toilet,brand dependent
+TAP-PILLAR-CP,Pillar Cock Chrome,Taps,"{""finish"":""chrome""}",650,,,piece,false,,pillar tap|pillar cock|tap,

@@ -1,0 +1,48 @@
+# ZuvoCloud edge (production). The only container with published ports (80/443).
+# Automatic HTTPS via Let's Encrypt for {$PUBLIC_DOMAIN}; HTTP is redirected to HTTPS automatically.
+# Everything is proxied to the frontend nginx, which already routes /api/v1/whatsapp/* -> gateway and /api/* -> dashboard-api.
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+
+	# Meta webhooks are a few KB; dashboard JSON bodies are small. Larger bodies are rejected with 413.
+	request_body {
+		max_size 1MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		-Server
+	}
+
+	# Defence in depth: dev-only endpoints are also disabled by config (ENABLE_SIMULATOR / AUTH_DEV_LOGIN = false).
+	@devonly path /api/v1/messages/simulate-inbound /api/v1/auth/dev-login /api/v1/auth/dev-identities /docs /docs/* /redoc /openapi.json
+	respond @devonly 404
+
+	reverse_proxy frontend:80 {
+		# SSE (/api/v1/dashboard/stream) must not be buffered
+		flush_interval -1
+	}
+
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				# EventSource cannot send headers, so the SSE token travels as ?access_token= — never log it
+				request>uri query {
+					delete access_token
+				}
+			}
+		}
+	}
+}

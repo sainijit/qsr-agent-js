@@ -1,0 +1,208 @@
+# ZuvoCloud production override for a single VM (e.g. AWS t4g.medium: 2 vCPU / 4 GB).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Validate first:  python3 scripts/preflight.py --compose
+# Requires Docker Compose >= 2.24 (`!reset`). Measurements behind every limit: docs/production-deployment.md.
+#
+# What this changes vs. the dev file:
+#   * Caddy is the only published port (80/443, automatic HTTPS). gateway / dashboard-api / frontend publish nothing.
+#   * Postgres, Redis and Kafka sit on an `internal` network with no route to the internet.
+#   * Kafka data is persisted (volume) and its JVM heap capped.
+#   * APP_ENV=production on every app service -> startup refuses dev login, simulator, unsigned webhooks, weak JWT secret.
+#   * Log rotation, memory limits, liveness health checks, graceful stop, read-only root FS, no-new-privileges.
+#   * Application images are named ${ZUVO_IMAGE_PREFIX}/<service>:${IMAGE_TAG} (scripts/deploy/deploy.sh sets IMAGE_TAG to the
+#     git commit) so the previous release stays on disk and rollback is `IMAGE_TAG=<old> up -d` (docs/deployment.md).
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+# hardening for the Python app containers (already non-root uid 10001)
+x-app-hardening: &app-hardening
+  read_only: true
+  tmpfs: ["/tmp:size=64m"]
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  stop_grace_period: 30s
+  networks: [zuvo, data]
+
+x-prod-env: &prod-env
+  APP_ENV: production
+
+# consumers have no HTTP port: liveness = heartbeat file refreshed by the Kafka poll loop
+x-consumer-health: &consumer-health
+  healthcheck:
+    test: ["CMD", "python", "-m", "zuvo_common.health", "--max-age", "180"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 90s
+
+services:
+  # ------------------------------------------------------------ edge
+  caddy:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    <<: *logging
+    networks: [edge]
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:?set PUBLIC_DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 128m
+    depends_on:
+      frontend: { condition: service_healthy }
+
+  frontend:
+    image: ${ZUVO_IMAGE_PREFIX:-zuvo}/frontend:${IMAGE_TAG:-local}
+    <<: *logging
+    ports: !reset []
+    networks: [zuvo, edge]
+    mem_limit: 64m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ------------------------------------------------------------ data plane (internal network only)
+  kafka:
+    <<: *logging
+    networks: !override [data]
+    environment:
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: "-Xms384m -Xmx512m"
+      # small segments so time/size retention can actually delete; worst case ~ partitions x 48 MB
+      KAFKA_LOG_SEGMENT_BYTES: "16777216"
+      KAFKA_LOG_RETENTION_BYTES: "33554432"
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes: [kafka_data:/var/lib/kafka/data]
+    mem_limit: 900m
+    stop_grace_period: 60s
+    # The probe starts a JVM (~1-2 CPU-s each). Every 10 s that was most of Kafka's idle CPU, which burns t4g credits.
+    # Probe every 5 s while starting (start_interval, Engine >= 25), then every 30 s.
+    healthcheck:
+      interval: 30s
+      retries: 3
+      start_period: 90s
+      start_interval: 5s
+
+  kafka-init:
+    <<: *logging
+    networks: !override [data]
+
+  postgres:
+    <<: *logging
+    networks: !override [data]
+    mem_limit: 512m
+    stop_grace_period: 60s
+
+  redis:
+    <<: *logging
+    networks: !override [data]
+    # idempotency keys must never be evicted silently: noeviction makes Redis fail loudly instead
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "96mb", "--maxmemory-policy", "noeviction"]
+    mem_limit: 128m
+
+  migrator:
+    image: ${ZUVO_IMAGE_PREFIX:-zuvo}/migrator:${IMAGE_TAG:-local}
+    <<: *logging
+    networks: !override [data]
+    environment:
+      <<: *prod-env
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 256m
+
+  # ------------------------------------------------------------ application services
+  gateway:
+    image: ${ZUVO_IMAGE_PREFIX:-zuvo}/gateway:${IMAGE_TAG:-local}
+    <<: [*logging, *app-hardening]
+    ports: !reset []
+    environment:
+      <<: *prod-env
+    mem_limit: 256m
+
+  dashboard-api:
+    image: ${ZUVO_IMAGE_PREFIX:-zuvo}/dashboard-api:${IMAGE_TAG:-local}
+    <<: [*logging, *app-hardening]
+    ports: !reset []
+    environment:
+      <<: *prod-env
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?set ALLOWED_ORIGINS=https://<PUBLIC_DOMAIN> in .env}
+    mem_limit: 384m
+
+  persister:
+    image: ${ZUVO_IMAGE_PREFIX:-zuvo}/persister:${IMAGE_TAG:-local}
+    <<: [*logging, *app-hardening, *consumer-health]
+    environment:
+      <<: *prod-env
+    mem_limit: 256m
+
+  ai-router:
+    image: ${ZUVO_IMAGE_PREFIX:-zuvo}/ai-router:${IMAGE_TAG:-local}
+    <<: [*logging, *app-hardening, *consumer-health]
+    environment:
+      <<: *prod-env
+    mem_limit: 256m
+
+  lead-service:
+    image: ${ZUVO_IMAGE_PREFIX:-zuvo}/lead-service:${IMAGE_TAG:-local}
+    <<: [*logging, *app-hardening, *consumer-health]
+    environment:
+      <<: *prod-env
+    mem_limit: 256m
+
+  agent-worker:
+    image: ${ZUVO_IMAGE_PREFIX:-zuvo}/agent-worker:${IMAGE_TAG:-local}
+    <<: [*logging, *app-hardening, *consumer-health]
+    environment:
+      <<: *prod-env
+    mem_limit: 256m
+
+  dispatch:
+    image: ${ZUVO_IMAGE_PREFIX:-zuvo}/dispatch:${IMAGE_TAG:-local}
+    <<: [*logging, *app-hardening, *consumer-health]
+    environment:
+      <<: *prod-env
+    mem_limit: 256m
+
+  followup-scheduler:
+    image: ${ZUVO_IMAGE_PREFIX:-zuvo}/followup-scheduler:${IMAGE_TAG:-local}
+    <<: [*logging, *app-hardening, *consumer-health]
+    environment:
+      <<: *prod-env
+    mem_limit: 256m
+
+  zuvo-ai-rag:
+    image: ${ZUVO_IMAGE_PREFIX:-zuvo}/zuvo-ai-rag:${IMAGE_TAG:-local}
+    <<: [*logging, *app-hardening]
+    environment:
+      <<: *prod-env
+    mem_limit: 384m
+
+networks:
+  # app services: east-west traffic + outbound internet (Gemini, Meta). Nothing is published.
+  zuvo: {}
+  # Postgres / Redis / Kafka: no internet route at all
+  data:
+    internal: true
+  # Caddy <-> frontend only
+  edge: {}
+
+volumes:
+  kafka_data: {}
+  caddy_data: {}
+  caddy_config: {}

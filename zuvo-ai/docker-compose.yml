@@ -1,0 +1,255 @@
+# ZuvoCloud — event-driven microservices on Kafka (KRaft). One container per responsibility.
+#   gateway        : Meta webhook ingress (HMAC, routing, dedupe) -> inbound.message.received
+#   persister      : sole DB writer for messages/AI results (RLS)   -> message.persisted
+#   ai-router      : Tier0 keywords / Gemini Flash-Lite NER         -> ai.intent.extracted | ai.review.flagged
+#   dispatch       : Meta Cloud API sender (24h window, at-most-once) -> outbound.message.sent
+#   dashboard-api  : JWT auth, tenant-scoped reads, SSE, outbound requests
+#   zuvo-ai-rag    : per-tenant knowledge retrieval (Gemini embeddings + pgvector hybrid search)
+#   frontend       : React Owner Command Center (nginx) — the only browser entry point
+# Secrets come from .env (see .env.example). No secret defaults live here.
+
+x-build-args: &build-args
+  HTTP_PROXY: ${HTTP_PROXY:-}
+  HTTPS_PROXY: ${HTTPS_PROXY:-}
+  NO_PROXY: ${NO_PROXY:-}
+
+x-py-env: &py-env
+  APP_ENV: ${APP_ENV:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  ZUVO_VERSION: ${ZUVO_VERSION:-dev}
+  DATABASE_URL: postgresql+asyncpg://zuvo_app:${ZUVO_APP_DB_PASSWORD:?set in .env}@postgres:5432/zuvo_db
+  REDIS_URL: redis://redis:6379/0
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  TENANT_ROUTING_PATH: /app/config/tenant-routing.yaml
+  TENANT_POLICY_ROOT: /app
+  JWT_SECRET: ${JWT_SECRET:?set in .env}
+
+x-py-service: &py-service
+  restart: unless-stopped
+  networks: [zuvo]
+  volumes:
+    - ./config/tenant-routing.yaml:/app/config/tenant-routing.yaml:ro
+    - ./tenants:/app/tenants:ro
+  depends_on:
+    migrator: { condition: service_completed_successfully }
+    kafka-init: { condition: service_completed_successfully }
+    redis: { condition: service_healthy }
+
+services:
+  # ------------------------------------------------------------ infrastructure
+  kafka:
+    image: apache/kafka:3.8.0
+    restart: unless-stopped
+    networks: [zuvo]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      # dev only: broker data is ephemeral (lost when the container is recreated)
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+
+  kafka-init:
+    image: apache/kafka:3.8.0
+    networks: [zuvo]
+    depends_on: { kafka: { condition: service_healthy } }
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        for t in inbound.message.received message.persisted ai.intent.extracted ai.review.flagged outbound.reply.requested outbound.message.sent message.status lead.updated visit.planned followup.due agent.reply.proposed approval.requested approval.decided; do
+          for name in "$$t" "$$t.DLQ"; do
+            /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic "$$name" --partitions 12 --replication-factor 1
+          done
+        done
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+    restart: "no"
+
+  postgres:
+    # postgres:16-alpine + pgvector (infra/postgres/Dockerfile) for zuvo-ai-rag embeddings
+    build: { context: infra/postgres, args: *build-args }
+    image: zuvo-postgres:16-pgvector
+    restart: unless-stopped
+    networks: [zuvo]
+    environment:
+      POSTGRES_USER: zuvo_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: zuvo_db
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zuvo_owner -d zuvo_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks: [zuvo]
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrator:
+    build: { context: ., dockerfile: services/migrator/Dockerfile, args: *build-args }
+    networks: [zuvo]
+    restart: "no"
+    environment:
+      <<: *py-env
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://zuvo_owner:${POSTGRES_PASSWORD}@postgres:5432/zuvo_db
+      ZUVO_APP_DB_PASSWORD: ${ZUVO_APP_DB_PASSWORD}
+      ZUVO_ONBOARD_DEFAULT_PASSWORD: ${ZUVO_ONBOARD_DEFAULT_PASSWORD:-}
+    volumes:
+      - ./config/tenant-routing.yaml:/app/config/tenant-routing.yaml:ro
+      - ./tenants:/app/tenants:ro
+    depends_on: { postgres: { condition: service_healthy } }
+
+  # ------------------------------------------------------------------ services
+  gateway:
+    <<: *py-service
+    build: { context: ., dockerfile: services/gateway/Dockerfile, args: *build-args }
+    ports: ["${GATEWAY_PORT:-8000}:8000"]   # Meta webhook / ngrok target
+    environment:
+      <<: *py-env
+      SERVICE_NAME: gateway
+      META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      REQUIRE_HMAC_VERIFICATION: ${REQUIRE_HMAC_VERIFICATION:-true}
+      ENABLE_SIMULATOR: ${ENABLE_SIMULATOR:-false}
+    healthcheck: &http-health
+      test: ["CMD", "python", "-c", "import urllib.request,os;urllib.request.urlopen('http://localhost:'+os.environ.get('PORT','8000')+'/api/v1/health',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  persister:
+    <<: *py-service
+    build: { context: ., dockerfile: services/persister/Dockerfile, args: *build-args }
+    environment:
+      <<: *py-env
+      SERVICE_NAME: persister
+
+  ai-router:
+    <<: *py-service
+    build: { context: ., dockerfile: services/ai_router/Dockerfile, args: *build-args }
+    environment:
+      <<: *py-env
+      SERVICE_NAME: ai-router
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ZUVO_GEMINI_MODEL: ${ZUVO_GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-20}
+      GEMINI_MAX_ATTEMPTS: ${GEMINI_MAX_ATTEMPTS:-3}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      NO_PROXY: kafka,postgres,redis,gateway,dashboard-api,localhost,127.0.0.1
+
+  lead-service:
+    <<: *py-service
+    build: { context: ., dockerfile: services/lead_service/Dockerfile, args: *build-args }
+    environment:
+      <<: *py-env
+      SERVICE_NAME: lead-service
+
+  agent-worker:
+    <<: *py-service
+    build: { context: ., dockerfile: services/agent_worker/Dockerfile, args: *build-args }
+    environment:
+      <<: *py-env
+      SERVICE_NAME: agent-worker
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ZUVO_GEMINI_MODEL: ${ZUVO_GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-20}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      NO_PROXY: kafka,postgres,redis,gateway,dashboard-api,zuvo-ai-rag,localhost,127.0.0.1
+      RAG_URL: http://zuvo-ai-rag:8020
+      RAG_SERVICE_TOKEN: ${RAG_SERVICE_TOKEN:-}
+      RAG_TIMEOUT_SECONDS: ${RAG_TIMEOUT_SECONDS:-2}
+
+  zuvo-ai-rag:
+    # tenant-scoped knowledge retrieval (Gemini embeddings + pgvector); internal only, no published port
+    <<: *py-service
+    build: { context: ., dockerfile: zuvo-ai-rag/Dockerfile, args: *build-args }
+    environment:
+      <<: *py-env
+      SERVICE_NAME: zuvo-ai-rag
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ZUVO_GEMINI_MODEL: ${ZUVO_GEMINI_MODEL:-gemini-3.5-flash-lite}
+      RAG_SERVICE_TOKEN: ${RAG_SERVICE_TOKEN:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      NO_PROXY: kafka,postgres,redis,localhost,127.0.0.1
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8020/healthz',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  followup-scheduler:
+    <<: *py-service
+    build: { context: ., dockerfile: services/followup_scheduler/Dockerfile, args: *build-args }
+    environment:
+      <<: *py-env
+      SERVICE_NAME: followup-scheduler
+      FOLLOWUP_TICK_SECONDS: ${FOLLOWUP_TICK_SECONDS:-30}
+
+  dispatch:
+    <<: *py-service
+    build: { context: ., dockerfile: services/dispatch/Dockerfile, args: *build-args }
+    environment:
+      <<: *py-env
+      SERVICE_NAME: dispatch
+      META_SYSTEM_USER_TOKEN: ${META_SYSTEM_USER_TOKEN:-}
+      META_API_VERSION: ${META_API_VERSION:-v20.0}
+      META_DRY_RUN: ${META_DRY_RUN:-true}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      NO_PROXY: kafka,postgres,redis,localhost,127.0.0.1
+
+  dashboard-api:
+    <<: *py-service
+    build: { context: ., dockerfile: services/dashboard_api/Dockerfile, args: *build-args }
+    ports: ["127.0.0.1:${DASHBOARD_API_PORT:-8001}:8001"]   # localhost only, for `npm run dev`
+    environment:
+      <<: *py-env
+      SERVICE_NAME: dashboard-api
+      PORT: "8001"
+      AUTH_DEV_LOGIN: ${AUTH_DEV_LOGIN:-false}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+    healthcheck: *http-health
+
+  frontend:
+    build: { context: ./frontend, args: *build-args }
+    restart: unless-stopped
+    networks: [zuvo]
+    ports: ["${FRONTEND_PORT:-3000}:80"]
+    depends_on:
+      gateway: { condition: service_healthy }
+      dashboard-api: { condition: service_healthy }
+
+networks:
+  zuvo: {}
+
+volumes:
+  postgres_data: {}
+  redis_data: {}

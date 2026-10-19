@@ -1,0 +1,30 @@
+# Optional: put persistent data on a dedicated disk (e.g. a second EBS volume mounted at /data) instead of
+# Docker's default /var/lib/docker/volumes. The data then survives replacing the root volume or the VM, and it can
+# be resized and snapshotted on its own.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f deploy/aws/docker-compose.datadir.yml up -d
+#
+# Prepare once (the owners match the images' users; Postgres refuses a data dir it does not own):
+#   sudo install -d -m 700 -o 70   -g 70   ${ZUVO_DATA_DIR}/postgres
+#   sudo install -d -m 775 -o 1000 -g 0    ${ZUVO_DATA_DIR}/kafka
+#   sudo install -d -m 755 -o 999  -g 1000 ${ZUVO_DATA_DIR}/redis
+#   sudo install -d -m 755 -o 0    -g 0    ${ZUVO_DATA_DIR}/caddy
+#
+# Only use this on a fresh host. Switching an existing deployment means moving the data: back up, stop, copy, start
+# (deploy/aws/README.md, "Move data to a separate volume").
+x-bind: &bind
+  driver: local
+
+volumes:
+  postgres_data:
+    <<: *bind
+    driver_opts: { type: none, o: bind, device: "${ZUVO_DATA_DIR:?set ZUVO_DATA_DIR (e.g. /data/zuvo)}/postgres" }
+  kafka_data:
+    <<: *bind
+    driver_opts: { type: none, o: bind, device: "${ZUVO_DATA_DIR:?set ZUVO_DATA_DIR}/kafka" }
+  redis_data:
+    <<: *bind
+    driver_opts: { type: none, o: bind, device: "${ZUVO_DATA_DIR:?set ZUVO_DATA_DIR}/redis" }
+  caddy_data:
+    <<: *bind
+    driver_opts: { type: none, o: bind, device: "${ZUVO_DATA_DIR:?set ZUVO_DATA_DIR}/caddy" }

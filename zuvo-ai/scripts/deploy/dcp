@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# docker compose for the production project, pinned to the currently deployed release.
+#
+#   scripts/deploy/dcp ps | logs --tail 100 gateway | exec -T dashboard-api ... | up -d --no-deps gateway
+#
+# Always use this (or deploy.sh/rollback.sh) on the server instead of plain `docker compose`. Without IMAGE_TAG,
+# compose would fall back to the `local` image tag and build or run the wrong images.
+# Restart a single service with `up -d --no-deps <svc>`. Without --no-deps, compose also re-runs its one-shot
+# dependencies (migrator, kafka-init).
+set -euo pipefail
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+if [[ -z "${IMAGE_TAG:-}" ]]; then
+  IMAGE_TAG=$(cat "$STATE_DIR/current" 2>/dev/null || true)
+  [[ -n "$IMAGE_TAG" ]] || die 2 "no current release in $STATE_DIR/current (deploy with scripts/deploy/deploy.sh first, or export IMAGE_TAG)"
+fi
+export IMAGE_TAG ZUVO_VERSION=${ZUVO_VERSION:-$IMAGE_TAG} ZUVO_IMAGE_PREFIX=$IMAGE_PREFIX
+dc "$@"

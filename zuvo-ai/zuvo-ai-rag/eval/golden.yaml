@@ -1,0 +1,38 @@
+# Golden retrieval set. expect = section (heading) of the chunk that answers; null = must NOT be answered
+# from this tenant's knowledge (out of domain, or another tenant's business).
+alpha-automobile:
+  - { q: "What are your workshop timings?", expect: "Alpha Automobile: workshop location, timings and contact" }
+  - { q: "kitne baje tak khula hai service centre?", expect: "Alpha Automobile: workshop location, timings and contact" }
+  - { q: "where is your garage located", expect: "Alpha Automobile: workshop location, timings and contact" }
+  - { q: "workshop ka address bhejo", expect: "Alpha Automobile: workshop location, timings and contact" }
+  - { q: "phone number kya hai aapka", expect: "Alpha Automobile: workshop location, timings and contact" }
+  - { q: "do you offer pickup and drop?", expect: "Services offered" }
+  - { q: "gaadi ghar se le jaoge kya?", expect: "Services offered" }
+  - { q: "Do you service BMW and Mercedes cars?", expect: "Services offered" }
+  - { q: "engine ka kaam karte ho?", expect: "Services offered" }
+  - { q: "do you do ceramic coating", expect: "Services offered" }
+  - { q: "how much does a general service cost", expect: "Service prices (starting from)" }
+  - { q: "denting painting ka rate kya hai", expect: "Service prices (starting from)" }
+  - { q: "full body paint karwane ka kharcha", expect: "Service prices (starting from)" }
+  - { q: "which paint brand do you use", expect: "Paint brands and paint warranty" }
+  - { q: "paint pe warranty milegi?", expect: "Paint brands and paint warranty" }
+  - { q: "will the paint fade or peel?", expect: "Paint brands and paint warranty" }
+  - { q: "do you sell sofas?", expect: null }
+  - { q: "pizza order karna hai", expect: null }
+  - { q: "what is the weather today", expect: null }
+  - { q: "PVC pipe ka rate batao", expect: null }
+  - { q: "dealer credit period kitna hai", expect: null }
+  - { q: "custom wardrobe banwana hai", expect: null }
+jaipur-furniture:
+  - { q: "delivery kitne din me hogi", expect: "Delivery and warranty" }
+  - { q: "is delivery free in Jaipur?", expect: "Delivery and warranty" }
+  - { q: "sheesham furniture pe warranty kitni hai", expect: "Delivery and warranty" }
+  - { q: "made to order bed kab tak milega", expect: "Delivery and warranty" }
+  - { q: "showroom kahan hai", expect: "Showroom and custom furniture" }
+  - { q: "are you open on sunday", expect: "Showroom and custom furniture" }
+  - { q: "can you make a wardrobe to my room size", expect: "Showroom and custom furniture" }
+  - { q: "advance kitna dena hoga", expect: "Showroom and custom furniture" }
+  - { q: "UPI se payment kar sakte hai?", expect: "Showroom and custom furniture" }
+  - { q: "do you service cars", expect: null }
+  - { q: "ceramic coating price", expect: null }
+  - { q: "cricket score batao", expect: null }

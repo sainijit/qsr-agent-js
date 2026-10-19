@@ -1,0 +1,104 @@
+# Tenant bundle: Alpha Automobile (multi-brand car service centre & body shop, Bengaluru). Validate/apply with scripts/onboard_tenant.py.
+tenant:
+  id: 5d2a7c10-1b2c-4d3e-9f40-a1b2c3d4e503
+  slug: alpha-automobile
+  name: Alpha Automobile
+  city: Bengaluru
+  industry: automobile_service
+  timezone: Asia/Kolkata
+  currency: INR
+  languages: [english, hinglish, hindi]
+  plan: pilot
+  monthly_ai_budget_inr: 1000
+
+numbers:
+  # Real Meta number (Zuvocloud Live). Messages to it are routed to this tenant.
+  - { meta_phone_number_id: "1340933852445316", display: "+17110219313", label: Sales, purpose: sales, default_worker: rahul-sales, waba_id: "901998862997772" }
+  # Simulator-only line (tests / "Simulate message" in the dashboard)
+  - { meta_phone_number_id: "PNID_ALPHA_01", display: "+919829100001", label: Sales (sim), purpose: sales, default_worker: rahul-sales }
+
+workers:
+  - { key: ajay-owner, name: Ajay Mehta, role: OWNER, email: owner@alpha-automobile.demo }
+  - { key: rahul-sales, name: Rahul Sharma, role: SALES_WORKER, email: rahul@alpha-automobile.demo }
+
+business_hours: { days: Mon-Sun, open: "09:00", close: "20:00" }
+
+ai:
+  persona: Friendly, honest service advisor for Alpha Automobile, a multi-brand car service centre and body shop in Whitefield, Bengaluru
+  confidence_threshold: 0.7
+  tier0_keywords: [hi, hello, hii, namaste, ok, okay, thanks, thank you, dhanyawad, "👍"]
+
+lead:
+  stages: [NEW, ENGAGED, QUALIFIED, VISIT_PLANNED, VISITED, WON, LOST, DORMANT]
+  qualify_fields: [interest, budget, timeline, location]
+  interests: [General service, Denting painting, Full body painting, Ceramic coating, Engine work, Pickup and drop]
+  dormant_after_days: 14
+
+followups:
+  - id: no_reply_nudge
+    when: no_reply
+    after: 24h
+    max: 2
+    mode: draft
+    template: lead_nudge_v1
+    text: "Hi {customer_name}, just checking in — do you still need help with {interest}? We can book a slot with free pickup and drop."
+  - id: visit_reminder
+    when: visit_planned
+    before: 18h
+    mode: auto
+    template: visit_reminder_v1
+    text: "Hi {customer_name}, reminder: your car service visit is on {visit_when}. Alpha Automobile, {address}. Reply here if plans change."
+  - id: visit_noshow
+    when: visit_passed
+    after: 4h
+    mode: draft
+    text: "Hi {customer_name}, we missed you at the workshop today. Would you like to pick another day, or should we arrange free pickup?"
+  - id: post_visit
+    when: visited
+    after: 2h
+    mode: draft
+    text: "Thank you for choosing Alpha Automobile, {customer_name}! Any questions about your {interest}?"
+  - id: dormant_revive
+    when: dormant
+    after: 30d
+    mode: draft
+    template: revive_offer_v1
+    text: "Hi {customer_name}, is your car due for a service? Alpha Automobile offers free pickup and drop in Whitefield. Want the latest prices?"
+
+pricing:
+  source: pricing.csv
+  answer_mode: auto
+  confidence_auto_min: 0.85
+  always_approval_if: [discount_request, price_missing, multiple_matches]
+  disclaimer: "Starting price{valid_until_text}. Final cost depends on the car model and the work needed."
+
+agent:
+  replies: { price: auto, faq: auto, visit_ack: auto, greeting: draft, general: off }
+  faq_confidence_auto_min: 0.8
+  holding_reply: "Thank you! Our service advisor will confirm this for you shortly."
+  greeting_text: "Hello! Welcome to Alpha Automobile, Whitefield. Which car do you have, and what service do you need?"
+  visit_ack_text: "Great! We have noted your visit on {visit_when}. Alpha Automobile, {address}. Location: https://maps.app.goo.gl/Yepp8DT3xpMxzoQV9"
+  address: "Meenakshi Layout Road, Siddapura, Whitefield, Bengaluru 560066"
+
+knowledge:
+  retrieval: rag        # zuvo-ai-rag semantic search (lexical fallback if the service is down)
+  top_k: 3
+
+approvals:
+  sla_minutes: 15
+  on_timeout: send_holding_reply
+  notify_owner_whatsapp: false
+
+learning:
+  enabled: true
+  min_examples_before_auto: 3
+  auto_promote_rate: 0.9
+  window: 20
+  demote_on_reject: true
+
+meta_templates:
+  - { name: lead_nudge_v1, language: en_US, category: MARKETING, params: [customer_name, interest] }
+  - { name: visit_reminder_v1, language: en_US, category: UTILITY, params: [customer_name, visit_when] }
+  - { name: revive_offer_v1, language: en_US, category: MARKETING, params: [customer_name] }
+
+opt_out_keywords: [stop, unsubscribe, band karo, mat bhejo, no more messages]
